@@ -1,0 +1,39 @@
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+
+.widget {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+
+.widget--wide {
+  grid-column: span 6;
+}
+
+.widget--tall {
+  min-height: 300px;
+}
+
+.widget--normal {
+  grid-column: span 3;
+}
+
+.empty-state {
+  grid-column: span 12;
+  text-align: center;
+  padding: 48px;
+  color: var(--text-muted);
+}
+
+.empty-state p {
+  margin-bottom: 16px;
+  font-size: 18px;
+}

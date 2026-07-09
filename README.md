@@ -1,6 +1,6 @@
-# Benchmark: Eleven-Model Comparison (Qwen + Sonnet + DeepSeek + Step + Ornith)
+# Benchmark: Twelve-Model Comparison (Qwen + Sonnet + DeepSeek + Step + Ornith + A1)
 
-A side-by-side comparison of eleven AI model variants on non-trivial coding tasks designed to test **architectural judgment** and **ambiguity-handling** - not just raw correctness.
+A side-by-side comparison of twelve AI model variants on non-trivial coding tasks designed to test **architectural judgment** and **ambiguity-handling** - not just raw correctness.
 
 This benchmark is intentionally built around **underspecified, real-world prompts** run against existing small codebases. The point is to measure how models resolve ambiguity, choose scope, and preserve working systems under realistic constraints - not whether they can produce a syntactically correct patch.
 
@@ -35,6 +35,7 @@ See [BENCHMARK.md](./BENCHMARK.md) for the full rubric and methodology.
 | **Qwen 3.6-27B-AEON-NVFP4** | 27 / 40 | 30.5 / 40 | **57.5** | 71.88% |
 | **Qwen 3.6-27B-4bit (OpenRouter)** | 26 / 40 | 28 / 40 | **54** | 67.50% |
 | **[Ornith-1.0-35B-8bit](https://huggingface.co/deepreinforce-ai/Ornith-1.0-35B-GGUF)** | 21 / 40 | 30 / 40 | **51** | 63.75% |
+| **Agents A1 FP8** | 24 / 40 | 24 / 40 | **48** | 60.00% |
 | **[Step-3.7-Flash IQ4_XS](https://huggingface.co/stepfun-ai/Step-3.7-Flash-GGUF)** | 19 / 40 | 27 / 40 | **46** | 57.50% |
 
 **Winner: Qwen 3.6-27B-8bit (Local, unsloth)** at 66.5/80.  
@@ -43,7 +44,9 @@ Third: **Qwen 3.6-35B-A3B-8bit (Local, agent-pair)** at 64/80 — the same 35B-A
 Fourth: **[Qwen 3.6-27B-NVFP4](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4)** at 63/80 — NVIDIA's official FP4 quantization of Qwen 3.6-27B, run locally via vLLM.  
 Fifth: **[DeepSeek-V4-Flash-REAP-180B](https://huggingface.co/0xSero/DeepSeek-V4-Flash-180B)** at 62/80 — a REAP-pruned 180B MoE running on a single DGX Spark.  
 Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bit** at 59/80.  
-**[Ornith-1.0-35B-8bit](https://huggingface.co/deepreinforce-ai/Ornith-1.0-35B-GGUF)** at 51/80 — a 35B MoE model marketed for agentic coding, run locally via llama.cpp at Q8_0 quantization.
+**[Ornith-1.0-35B-8bit](https://huggingface.co/deepreinforce-ai/Ornith-1.0-35B-GGUF)** at 51/80 — a 35B MoE model marketed for agentic coding, run locally via llama.cpp at Q8_0 quantization.  
+**Agents A1 FP8** at 48/80 — per-issue checkpointing (not per-page) on the sync task and type/instance conflation on widgets place it 11th.  
+Last: **[Step-3.7-Flash IQ4_XS](https://huggingface.co/stepfun-ai/Step-3.7-Flash-GGUF)** at 46/80.
 
 > **Note on Qwen 3.6-35B-A3B-8bit (agent-pair):** This is the same Qwen 3.6-35B-A3B model in FP8 (8-bit) quantization, run locally with **agent-pair** mode — a pair-programming setup where an observer model reviews the coder's work in real-time and provides feedback. Both coder and observer are the same model (`Qwen3.6-35B-A3B-FP8`). The 8-bit quantization + observer feedback boosts the total from 59/80 (4-bit solo) to 64/80, primarily through a dramatically improved widget score (35 vs 28). The sync score drops slightly (29 vs 31) due to dead code and a commit ordering issue the observer flagged but was not fully addressed.
 
@@ -59,31 +62,33 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 
 > **Note on Step-3.7-Flash IQ4_XS:** This is [StepFun's Step-3.7-Flash](https://huggingface.co/stepfun-ai/Step-3.7-Flash-GGUF), a 198B-parameter sparse MoE (activating ~11B per token) in IQ4_XS quantization (105 GB), run locally via llama.cpp. Despite being the largest model by total parameters in this benchmark, it scores last — the `since`-based conflation on the sync task (19/40) and shallow widget contract (27/40) suggest the small active parameter count (~11B) limits architectural reasoning depth.
 
+> **Note on Agents A1 FP8:** Scores 48/80 (11th of 12), placing between Ornith (51/80) and Step (46/80). On the sync task (24/40), the model chose per-issue checkpointing — tracking `last_issue_id` and re-fetching all pages on resume rather than resuming at the right page — and included a vestigial `comments_fetched` field that is written but never read. On the widgets task (24/40), the registry pattern is clean but `WidgetInstance.id` conflates instance identity with widget type ID, meaning duplicate widget types cannot be placed on the dashboard and React key warnings would fire if attempted. Neither README was updated. Main weaknesses relative to the benchmark pack: wrong checkpoint granularity on sync, and the deepest type/instance conflation on widgets (alongside Qwen 3.6-35B-A3B-4bit).
+
 ---
 
 ## Task 1: Resumable Sync
 
 ### Score Breakdown
 
-| Criterion | Max | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|-----------|-----|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|
-| Architectural judgment | 12 | 10 | 8 | 8 | 10 | 10 | 10 | 9 | 11 | 10 | 7 | 7 |
-| Ambiguity-handling | 10 | 7 | 6 | 5 | 7 | 7 | 7 | 5 | 7 | 7 | 5 | 2 |
-| Existing-code respect | 8 | 8 | 8 | 8 | 8 | 7 | 8 | 8 | 8 | 8 | 6 | 6 |
-| Debugging / failure-mode | 6 | 3 | 2 | 3 | 3 | 3 | 3 | 3 | 4 | 3 | 2 | 3 |
-| Code quality | 4 | 3 | 2 | 2 | 3 | 2 | 3 | 2 | 3 | 2 | 1 | 1 |
-| **Total** | **40** | **31** | **26** | **26** | **31** | **29** | **31** | **27** | **33** | **30** | **21** | **19** |
+| Criterion | Max | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|-----------|-----|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|--------|
+| Architectural judgment | 12 | 10 | 8 | 8 | 10 | 10 | 10 | 9 | 11 | 10 | 7 | 7 | 6 |
+| Ambiguity-handling | 10 | 7 | 6 | 5 | 7 | 7 | 7 | 5 | 7 | 7 | 5 | 2 | 5 |
+| Existing-code respect | 8 | 8 | 8 | 8 | 8 | 7 | 8 | 8 | 8 | 8 | 6 | 6 | 7.5 |
+| Debugging / failure-mode | 6 | 3 | 2 | 3 | 3 | 3 | 3 | 3 | 4 | 3 | 2 | 3 | 3.5 |
+| Code quality | 4 | 3 | 2 | 2 | 3 | 2 | 3 | 2 | 3 | 2 | 1 | 1 | 2 |
+| **Total** | **40** | **31** | **26** | **26** | **31** | **29** | **31** | **27** | **33** | **30** | **21** | **19** | **24** |
 
 ### Architectural Approaches
 
-| Aspect | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|--------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|
-| **State tables** | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_state` | 1 table: `sync_state` | 1 table: `sync_state` | 2 tables: `sync_state` + `pending_comments` | 1 table: `sync_checkpoints` | 1 table: `sync_state` | 1 table: `sync_state` |
-| **Checkpoint granularity** | Per-page | Per-issue | Per-issue | Per-page | Per-page | Per-page | Per-page | Per-page (+ deferred comments checkpointing) | Per-page | Per-page | `since`-based (timestamp) |
-| **Comments handling** | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, dead `start_page` param (always 1) | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Deferred to separate pass with per-issue checkpoint | Inline fetch, no inner checkpoint (error-caught) | Inline fetch, no inner checkpoint (scope bug) | Inline fetch, try/except per issue |
-| **Checkpoint/data transaction coupling** | Weak (separate commits) | Weak | Stronger (same commit path) | Weak (separate commits) | Weak (separate commits) | Weak (checkpoint after commit) | Weak (separate commits) | Medium (implicit/partially coupled) | Weak (separate commits) | Weak (progress saved after commit; last-repo never committed) | Weak (state lags one issue) |
-| **CLI reset flag** | `--reset` | None | None | None | None | `--full` | `--fresh` | `--reset` | None | None | None |
-| **README update** | Yes | No | No | Yes | No | No | No | Yes | No | No | No |
+| Aspect | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|--------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|--------|
+| **State tables** | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_progress` | 1 table: `sync_state` | 1 table: `sync_state` | 1 table: `sync_state` | 2 tables: `sync_state` + `pending_comments` | 1 table: `sync_checkpoints` | 1 table: `sync_state` | 1 table: `sync_state` | 1 table: `sync_progress` |
+| **Checkpoint granularity** | Per-page | Per-issue | Per-issue | Per-page | Per-page | Per-page | Per-page | Per-page (+ deferred comments checkpointing) | Per-page | Per-page | `since`-based (timestamp) | Per-issue (`last_issue_id`, re-fetches pages on resume) |
+| **Comments handling** | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Inline fetch, dead `start_page` param (always 1) | Inline fetch, no inner checkpoint | Inline fetch, no inner checkpoint | Deferred to separate pass with per-issue checkpoint | Inline fetch, no inner checkpoint (error-caught) | Inline fetch, no inner checkpoint (scope bug) | Inline fetch, try/except per issue | `comments_fetched` field written but never read; effectively no comment checkpoint |
+| **Checkpoint/data transaction coupling** | Weak (separate commits) | Weak | Stronger (same commit path) | Weak (separate commits) | Weak (separate commits) | Weak (checkpoint after commit) | Weak (separate commits) | Medium (implicit/partially coupled) | Weak (separate commits) | Weak (progress saved after commit; last-repo never committed) | Weak (state lags one issue) | Weak (separate commits: page data first, progress second) |
+| **CLI reset flag** | `--reset` | None | None | None | None | `--full` | `--fresh` | `--reset` | None | None | None | None |
+| **README update** | Yes | No | No | Yes | No | No | No | Yes | No | No | No | No |
 
 **Key differences**:
 - Sonnet remains the only model that explicitly addresses nested-loop resumability in architecture.
@@ -99,14 +104,14 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 
 ### Strong/Weak Signals
 
-| Signal | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-||--------|-----------------|---------------|----------|----------------|---------------------|-------|------------|--------|-----------------|-----------------|----------------|
-|| State stored in `issues.db` (not JSON) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-|| Per-repo cursors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-|| State in same transaction as page commits | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ |
-|| Notes per-page-vs-per-record tradeoff | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-|| Updates README | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Uses `since` (conflates with resumability) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ ⚠️ conflated |
+| Signal | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+||--------|-----------------|---------------|----------|----------------|---------------------|-------|------------|--------|-----------------|-----------------|----------------|--------|
+|| State stored in `issues.db` (not JSON) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+|| Per-repo cursors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+|| State in same transaction as page commits | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ | ❌ |
+|| Notes per-page-vs-per-record tradeoff | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+|| Updates README | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Uses `since` (conflates with resumability) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ ⚠️ conflated | ❌ |
 
 ---
 
@@ -114,26 +119,26 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 
 ### Score Breakdown
 
-| Criterion | Max | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|-----------|-----|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|
-| Architectural judgment | 14 | 13 | 11 | 11 | 10 | 13 | 12 | 13 | 13 | 10 | 9 | 9 |
-| Ambiguity-handling | 10 | 8.5 | 5 | 8 | 5 | 7 | 7 | 7 | 6 | 8 | 8 | 6 |
-| Existing-code respect | 8 | 7 | 7 | 7 | 8 | 8 | 8 | 5.5 | 7 | 7 | 7 | 7 |
-| Frontend craft | 4 | 4 | 2 | 3 | 3 | 3.5 | 3 | 2 | 3 | 3 | 3 | 3 |
-| Code quality | 4 | 3 | 3 | 4 | 2 | 3.5 | 2 | 3 | 3 | 4 | 3 | 2 |
-| **Total** | **40** | **35.5** | **28** | **33** | **28** | **35** | **32** | **30.5** | **32** | **32** | **30** | **27** |
+| Criterion | Max | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|-----------|-----|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|--------|
+| Architectural judgment | 14 | 13 | 11 | 11 | 10 | 13 | 12 | 13 | 13 | 10 | 9 | 9 | 10 |
+| Ambiguity-handling | 10 | 8.5 | 5 | 8 | 5 | 7 | 7 | 7 | 6 | 8 | 8 | 6 | 7 |
+| Existing-code respect | 8 | 7 | 7 | 7 | 8 | 8 | 8 | 5.5 | 7 | 7 | 7 | 7 | 5 |
+| Frontend craft | 4 | 4 | 2 | 3 | 3 | 3.5 | 3 | 2 | 3 | 3 | 3 | 3 | 2 |
+| Code quality | 4 | 3 | 3 | 4 | 2 | 3.5 | 2 | 3 | 3 | 4 | 3 | 2 | 3 |
+| **Total** | **40** | **35.5** | **28** | **33** | **28** | **35** | **32** | **30.5** | **32** | **32** | **30** | **27** | **24** |
 
 ### Architectural Approaches
 
-| Aspect | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|--------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|
-| **Widget contract** | `WidgetType` interface (no generic settings) | `WidgetDescriptor<TData>` generic | `WidgetDescriptor<T>` generic | `WidgetDef` (minimal, non-generic settings) | `WidgetPlugin<TData>` generic | `WidgetType` interface (no generic settings) | `WidgetType` interface (no generic settings) | `WidgetDefinition` (no generic) | `WidgetDefinition` (no generic settings) | `WidgetDef` (no generic settings) | `WidgetDefinition` (no generic, unused `pollInterval`) |
-| **Registration pattern** | Map registry + `registerWidget()` + side-effect imports | Class + side-effect imports | Map registry + `registerWidget()` + side-effect imports | `WidgetRegistry` + `BUILTIN_WIDGETS` catalog | Map registry + `registerWidget()` + side-effect imports | Map registry + `registerWidget()` + side-effect imports | Class `WidgetRegistry` + side-effect imports | Plain object registry | Map registry + `defineWidget()` | Array registry (`widgetRegistry`) — no self-registration | Class `WidgetRegistry` + side-effect imports |
-| **Type/instance split** | ✅ Perfect | ✅ | ⚠️ Partial (type IDs used as instances) | ❌ Conflated | ✅ Perfect (`WidgetPlugin` vs `WidgetEntry`) | ✅ Perfect (`WidgetType` vs `PlacedWidget`) | ✅ Perfect (`WidgetType` vs `LayoutEntry`) | ✅ | ⚠️ Partial (`activeIds` is `string[]` of type IDs) | ⚠️ Partial (no instance concept, no duplicates) | ⚠️ Partial (no duplicate widgets allowed) |
-| **Layout persistence** | localStorage | In-memory only | localStorage (`dashboard-config`) | localStorage (`dashboard-layout`) | localStorage (`widget-layout-v1`) | localStorage (`dashboard-layout`) | Dead code (exists but never wired up) | localStorage | localStorage (`dashboard-layout`) | localStorage (`ops-dashboard-layout`) | localStorage (`dashboard-config`) |
-| **Widget refactoring strategy** | Minimal (body content only, all 5 consistent) | Rewrote all 5 widgets | Rewrote all 5 widgets consistently | Kept existing widgets mostly unchanged | Consistent (pure render + registration, all 5) | Left widgets byte-for-byte identical | Consistent (component + config + register, all 5) | Left widgets byte-for-byte identical | Consolidated all 5 into `widgets.tsx` | Minimal (CSS class suffix only, all 5 consistent) | Appended `widgetDefinition` export to each (minimal) |
-| **Adding 6th widget** | 2 files | 2-3 files | 1-2 files | 1 file | 2 files | 2 files | 2 files | 2 files | 1 file (`defineWidget()` call) | 2 files (widget + registry entry) | 2 files (widget + registry import) |
-| **Documentation** | None | None | Minimal (mostly code-level) | Minimal | None | None (README unchanged) | None | `WIDGET_GUIDE.md` + `EXAMPLE_NEW_WIDGET.md` | Good README with architecture + guide | None (README unchanged) | None (README unchanged) |
+| Aspect | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|--------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|--------|
+| **Widget contract** | `WidgetType` interface (no generic settings) | `WidgetDescriptor<TData>` generic | `WidgetDescriptor<T>` generic | `WidgetDef` (minimal, non-generic settings) | `WidgetPlugin<TData>` generic | `WidgetType` interface (no generic settings) | `WidgetType` interface (no generic settings) | `WidgetDefinition` (no generic) | `WidgetDefinition` (no generic settings) | `WidgetDef` (no generic settings) | `WidgetDefinition` (no generic, unused `pollInterval`) | `WidgetDefinition` (no generic settings, `render: () => React.ReactNode`) |
+| **Registration pattern** | Map registry + `registerWidget()` + side-effect imports | Class + side-effect imports | Map registry + `registerWidget()` + side-effect imports | `WidgetRegistry` + `BUILTIN_WIDGETS` catalog | Map registry + `registerWidget()` + side-effect imports | Map registry + `registerWidget()` + side-effect imports | Class `WidgetRegistry` + side-effect imports | Plain object registry | Map registry + `defineWidget()` | Array registry (`widgetRegistry`) — no self-registration | Class `WidgetRegistry` + side-effect imports | `WidgetConfig` Map registry + `initBuiltIn()` call |
+| **Type/instance split** | ✅ Perfect | ✅ | ⚠️ Partial (type IDs used as instances) | ❌ Conflated | ✅ Perfect (`WidgetPlugin` vs `WidgetEntry`) | ✅ Perfect (`WidgetType` vs `PlacedWidget`) | ✅ Perfect (`WidgetType` vs `LayoutEntry`) | ✅ | ⚠️ Partial (`activeIds` is `string[]` of type IDs) | ⚠️ Partial (no instance concept, no duplicates) | ⚠️ Partial (no duplicate widgets allowed) | ❌ Conflated (`WidgetInstance.id` is type ID; can't add duplicates; React key bug) |
+| **Layout persistence** | localStorage | In-memory only | localStorage (`dashboard-config`) | localStorage (`dashboard-layout`) | localStorage (`widget-layout-v1`) | localStorage (`dashboard-layout`) | Dead code (exists but never wired up) | localStorage | localStorage (`dashboard-layout`) | localStorage (`ops-dashboard-layout`) | localStorage (`dashboard-config`) | localStorage (`dashboard_widget_config`, no versioning, starts empty) |
+| **Widget refactoring strategy** | Minimal (body content only, all 5 consistent) | Rewrote all 5 widgets | Rewrote all 5 widgets consistently | Kept existing widgets mostly unchanged | Consistent (pure render + registration, all 5) | Left widgets byte-for-byte identical | Consistent (component + config + register, all 5) | Left widgets byte-for-byte identical | Consolidated all 5 into `widgets.tsx` | Minimal (CSS class suffix only, all 5 consistent) | Appended `widgetDefinition` export to each (minimal) | Consistent (outer wrapper div removed from all 5) |
+| **Adding 6th widget** | 2 files | 2-3 files | 1-2 files | 1 file | 2 files | 2 files | 2 files | 2 files | 1 file (`defineWidget()` call) | 2 files (widget + registry entry) | 2 files (widget + registry import) | 2 files (new widget file + register in `initBuiltIn()`) |
+| **Documentation** | None | None | Minimal (mostly code-level) | Minimal | None | None (README unchanged) | None | `WIDGET_GUIDE.md` + `EXAMPLE_NEW_WIDGET.md` | Good README with architecture + guide | None (README unchanged) | None (README unchanged) | None (README unchanged) |
 
 **Key differences**:
 - **Qwen 3.6-27B-8bit (Local)** is the strongest on widgets overall (35.5/40): perfect type/instance separation, zero frontend bugs, full marks on frontend craft, and strong ambiguity-handling.
@@ -146,20 +151,23 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 - Sonnet remains strongest in documentation quality, though DeepSeek's README is also notably good.
 - **Ornith-1.0-35B** scores 30/40 on widgets — solid ambiguity-handling (8/10, tied for second-best) and clean code quality (3/4), but the same type/instance conflation as several other models. Minimal widget refactoring (CSS class suffix only) shows good existing-code respect. Minor React issues: ineffective `useMemo`, palette positioning, toggle/click-outside conflict.
 - **Step-3.7-Flash** scores lowest (27/40) on widgets. Its registry pattern is clean, but the widget contract is shallow (`pollInterval` declared but never consumed by the framework), and the README was not updated.
+- **Agents A1 FP8** scores 24/40 on widgets. The `WidgetConfig` registry is clean and centralized, but `WidgetInstance.id` conflates instance identity with widget type ID — the deepest type/instance conflation in the benchmark alongside Qwen 3.6-35B-A3B-4bit. This means duplicate widget types cannot be placed and React would fire key warnings. Layout starts with an empty dashboard (no default widgets). The refactoring of all 5 widgets is consistent but loses original column-span fidelity (7-col and 5-col placements replaced by a 2-tier "normal/wide" system). `React.createElement(widgetDef.render)` is an unusual pattern that should be `<widgetDef.render />`.
 
 ### Frontend Issues Found
 
-| Issue | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|-------|-----------------|---------------|----------|----------------|---------------------|-------|------------|--------|-----------------|-----------------|----------------|
-| Conditional hook call (Rules of Hooks violation) | — | ❌ Bug | — | — | — | — | — | — | — | — | — |
-| Incorrect drag event (`onDrag` vs `onDrop`) | — | ❌ Bug | — | — | — | — | — | — | — | — | — |
-| Runtime-breaking typo (`setSets` vs `setServices`) | — | — | — | — | — | — | ❌ Bug | — | — | — | — |
-| Type-vs-instance conflation risk | — | — | ⚠️ Partial | ❌ Clear gap | — | — | — | — | ⚠️ Partial (no duplicate widgets) | ⚠️ Partial (no instance concept) | ⚠️ Partial (no duplicates) |
-| Dead persistence code (exists but unused) | — | — | — | — | — | — | ⚠️ Tech debt | — | — | — | — |
-| Dead code (`\|\| true`, `&& false`) | — | — | — | — | — | — | — | ⚠️ Sloppy | — | — | — |
-| CSS duplication (duplicate class definitions) | — | — | — | — | — | ⚠️ Sloppy | — | — | — | — | — |
-| Unused contract fields (`pollInterval` dead weight) | — | — | — | — | — | — | — | — | — | — | ⚠️ Minor |
-| Ineffective `useMemo` / palette positioning | — | — | — | — | — | — | — | — | — | ⚠️ Minor | — |
+| Issue | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|-------|-----------------|---------------|----------|----------------|---------------------|-------|------------|--------|-----------------|-----------------|----------------|--------|
+| Conditional hook call (Rules of Hooks violation) | — | ❌ Bug | — | — | — | — | — | — | — | — | — | — |
+| Incorrect drag event (`onDrag` vs `onDrop`) | — | ❌ Bug | — | — | — | — | — | — | — | — | — | — |
+| Runtime-breaking typo (`setSets` vs `setServices`) | — | — | — | — | — | — | ❌ Bug | — | — | — | — | — |
+| Type-vs-instance conflation risk | — | — | ⚠️ Partial | ❌ Clear gap | — | — | — | — | ⚠️ Partial (no duplicate widgets) | ⚠️ Partial (no instance concept) | ⚠️ Partial (no duplicates) | ❌ Clear gap (instanceId = typeId; React key bug) |
+| Dead persistence code (exists but unused) | — | — | — | — | — | — | ⚠️ Tech debt | — | — | — | — | — |
+| Dead code (`\|\| true`, `&& false`) | — | — | — | — | — | — | — | ⚠️ Sloppy | — | — | — | — |
+| CSS duplication (duplicate class definitions) | — | — | — | — | — | ⚠️ Sloppy | — | — | — | — | — | — |
+| Unused contract fields (`pollInterval` dead weight) | — | — | — | — | — | — | — | — | — | — | ⚠️ Minor | — |
+| Ineffective `useMemo` / palette positioning | — | — | — | — | — | — | — | — | — | ⚠️ Minor | — | — |
+| `React.createElement(fn)` instead of component type | — | — | — | — | — | — | — | — | — | — | — | ⚠️ Minor |
+| No default widgets (starts empty) | — | — | — | — | — | — | — | — | — | — | — | ⚠️ UX gap |
 
 ---
 
@@ -218,6 +226,14 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 3. **No documentation at all** — README unchanged on both tasks, no design rationale anywhere.
 4. **Shallow widget contract** — `pollInterval` declared but never consumed; no settings abstraction.
 
+### Where Agents A1 FP8 Fell Short
+
+1. **Per-issue checkpointing instead of per-page** — the model tracked `last_issue_id` and skips issues client-side on resume. This means a crash on page 100 of 200 still re-fetches all 100 previous pages from GitHub on restart. Every other model that got the checkpoint granularity wrong (27B-4bit, 27B-4bit-OR) made the same mistake, but it remains the primary sync weakness.
+2. **Vestigial `comments_fetched` field** — written after every page of issues but never read in any resume logic. The dead code in `skip_already_synced()` that references it (a branch that does nothing) suggests the model started designing nested-loop checkpointing but abandoned it without cleaning up.
+3. **Type/instance conflation in widgets** — `WidgetInstance.id` stores the widget *type* ID, not a unique instance identifier. Duplicate widget types cannot be placed on the dashboard, and React key warnings would fire if they were. This is the sharpest manifestation of type/instance conflation in the benchmark, tied only with Qwen 3.6-35B-A3B-4bit.
+4. **Dashboard starts empty** — `loadFromStorage()` returns `[]` as the default, so users who haven't configured the dashboard before see "No widgets added yet" — a UX regression from the original static layout.
+5. **No documentation on either task** — neither README was updated, no design rationale anywhere.
+
 ### Where All Failed
 
 - **Ambiguity naming is still weak overall**: all models tended to silently pick a branch rather than explicitly framing the tradeoff.
@@ -232,15 +248,15 @@ Best cloud Qwen variants (tie): **Qwen 3.6-27B-4bit** and **Qwen 3.6-35B-A3B-4bi
 
 ## Qualitative Summary
 
-| Dimension | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash |
-|-----------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|
-| Engineering execution | Strong on both | Solid baseline | Strong on widgets | Strong on sync | Strong on widgets, solid on sync | Strong on both | Solid architecture, sloppy edges | Most balanced | Solid on both | Decent on widgets, weak on sync | Weak on sync, decent on widgets |
-| Architectural ambition | Higher/clean | Higher/invasive | Higher/invasive but cleaner | Moderate/conservative | Higher/clean | Higher/clean | Higher/clean but unfinished | Conservative/comprehensive | Moderate/clean | Moderate/clean | Moderate/shallow |
-| Reasoning transparency | Mostly silent | Silent | Mostly silent | Mostly silent | Mostly silent | Mostly silent | Silent | Slightly better | Mostly silent | Silent | Silent |
-| Edge-case handling | Missed comments subloop; no UI bugs | Missed nested loop + UI bugs | Better frontend discipline | Better sync failure boundaries | Missed comments subloop; dead start_page param; no UI bugs | Missed comments subloop; txn ordering bug; no UI bugs | Missed comments subloop; runtime typo | Best nested-loop handling | Missed comments subloop; good defensive error handling | Txn ordering bug; comment-fetch scope regression; minor UI issues | Conflated sync concerns; broke sort order |
-| Documentation | Updated sync README | Skipped | Minimal | Updated sync README | Skipped | Skipped | Skipped | Strongest overall | No sync README; excellent widget README | Skipped | Skipped |
-| Bug/sloppiness profile | None | 2 frontend bugs | Minor hook/pattern risks | Instance-model gaps | Dead code paths (total_pages, start_page) | Txn ordering bug; CSS duplication | Runtime typo; dead persistence code | Minor dead-code sloppiness | Type/instance partial conflation | Txn bug + scope regression on sync; type/instance partial on widgets | Sort-order regression; unused contract fields |
-| **Would merge PR?** | Yes | Maybe (fixes needed) | Yes, with minor notes | Yes, with minor notes | Sync: Yes (with fixes); Widgets: Yes | Yes, with minor notes | Yes, with fixes needed | Yes | Yes, with minor notes | Sync: No; Widgets: Yes (with notes) | Sync: No; Widgets: Yes (with fixes) |
+| Dimension | 27B-8bit (local) | 27B-4bit (OR) | 27B-4bit | 35B-A3B-4bit | 35B-A3B-8bit (pair) | NVFP4 | AEON-NVFP4 | Sonnet 4.5 | DS-V4-REAP-180B | Ornith-35B-8bit | Step-3.7-Flash | A1-FP8 |
+|-----------|------------------|---------------|----------|--------------|---------------------|-------|------------|------------|-----------------|-----------------|----------------|--------|
+| Engineering execution | Strong on both | Solid baseline | Strong on widgets | Strong on sync | Strong on widgets, solid on sync | Strong on both | Solid architecture, sloppy edges | Most balanced | Solid on both | Decent on widgets, weak on sync | Weak on sync, decent on widgets | Weak on sync (wrong granularity), weak on widgets (type/instance bug) |
+| Architectural ambition | Higher/clean | Higher/invasive | Higher/invasive but cleaner | Moderate/conservative | Higher/clean | Higher/clean | Higher/clean but unfinished | Conservative/comprehensive | Moderate/clean | Moderate/clean | Moderate/shallow | Moderate/incomplete |
+| Reasoning transparency | Mostly silent | Silent | Mostly silent | Mostly silent | Mostly silent | Mostly silent | Silent | Slightly better | Mostly silent | Silent | Silent | Silent |
+| Edge-case handling | Missed comments subloop; no UI bugs | Missed nested loop + UI bugs | Better frontend discipline | Better sync failure boundaries | Missed comments subloop; dead start_page param; no UI bugs | Missed comments subloop; txn ordering bug; no UI bugs | Missed comments subloop; runtime typo | Best nested-loop handling | Missed comments subloop; good defensive error handling | Txn ordering bug; comment-fetch scope regression; minor UI issues | Conflated sync concerns; broke sort order | Per-issue instead of per-page; vestigial comments_fetched; type/instance conflation; empty default dashboard |
+| Documentation | Updated sync README | Skipped | Minimal | Updated sync README | Skipped | Skipped | Skipped | Strongest overall | No sync README; excellent widget README | Skipped | Skipped | Skipped |
+| Bug/sloppiness profile | None | 2 frontend bugs | Minor hook/pattern risks | Instance-model gaps | Dead code paths (total_pages, start_page) | Txn ordering bug; CSS duplication | Runtime typo; dead persistence code | Minor dead-code sloppiness | Type/instance partial conflation | Txn bug + scope regression on sync; type/instance partial on widgets | Sort-order regression; unused contract fields | Per-issue checkpoint (inefficient); dead comments_fetched; type/instance conflation; empty-dashboard UX regression |
+| **Would merge PR?** | Yes | Maybe (fixes needed) | Yes, with minor notes | Yes, with minor notes | Sync: Yes (with fixes); Widgets: Yes | Yes, with minor notes | Yes, with fixes needed | Yes | Yes, with minor notes | Sync: No; Widgets: Yes (with notes) | Sync: No; Widgets: Yes (with fixes) | Sync: Reluctantly yes (significant rework needed); Widgets: No (type/instance bug) |
 
 ---
 
@@ -304,6 +320,11 @@ A-vs-B/
     ├── pluggable-widgets/
     ├── review-resumable-sync.md
     └── review-pluggable-widgets.md
+├── agents-a1-fp8/                # Agents A1 FP8 — per-issue checkpoint, type/instance conflation
+│   ├── resumable-sync/
+│   ├── pluggable-widgets/
+│   ├── review-resumable-sync.md
+│   └── review-pluggable-widgets.md
 ```
 
 ---
@@ -323,7 +344,8 @@ Ranking:
 8. **Qwen 3.6-27B-AEON-NVFP4** - 57.5/80
 9. **Qwen 3.6-27B-4bit (OpenRouter)** - 54/80
 10. **[Ornith-1.0-35B-8bit](https://huggingface.co/deepreinforce-ai/Ornith-1.0-35B-GGUF)** - 51/80
-11. **[Step-3.7-Flash IQ4_XS](https://huggingface.co/stepfun-ai/Step-3.7-Flash-GGUF)** - 46/80
+11. **Agents A1 FP8** - 48/80
+12. **[Step-3.7-Flash IQ4_XS](https://huggingface.co/stepfun-ai/Step-3.7-Flash-GGUF)** - 46/80
 
 Most important patterns:
 - The locally run unsloth 8-bit model outperforms all cloud/API variants — including Claude Sonnet 4.5 — driven by a near-perfect widget score (35.5/40) and solid sync performance (31/40).
@@ -336,6 +358,7 @@ Most important patterns:
 - **Qwen 3.6-27B-AEON-NVFP4** (57.5/80) demonstrates that uncensored fine-tunes degrade coding performance — the same NVFP4 quantization format scores 63/80 with the vanilla base model. Its widget architecture is excellent (13/14) with perfect type/instance separation, but execution flaws (runtime typo, dead code) and missing documentation pull the overall score well below the official NVFP4 (63) and the standard 27B-4bit (59).
 - **Ornith-1.0-35B-8bit** places 10th (51/80) despite being specifically RL-trained for agentic coding and claiming state-of-the-art results on Terminal-Bench 2.1, SWE-Bench, and NL2Repo. The sync task (21/40) is its main weakness — correct per-page granularity choice is undermined by a transaction ordering bug (`save_progress` after `conn.commit()`) and a comment-fetch scope regression. The widget task (30/40) is more competitive, with strong ambiguity-handling (8/10) and clean code quality, but the same type/instance conflation seen in most models. This gap between SWE-Bench-style performance and architectural-judgment benchmarks suggests these evaluate different skills.
 - **Step-3.7-Flash IQ4_XS** scores last (46/80) despite being the largest model by total parameters (198B). Its ~11B active parameter count per token appears insufficient for the architectural reasoning these tasks demand. The sync task is particularly weak (19/40) — it's the only model that conflated crash-recovery resumability with incremental sync via GitHub's `since` parameter, and it broke the existing sort-order invariant. The widget task (27/40) is more respectable, with a clean registry pattern, but the contract is shallow and undocumented.
+- **Agents A1 FP8** scores 48/80 (11th of 12), above only Step-3.7-Flash. On sync (24/40), it chose per-issue checkpointing — tracking `last_issue_id` and filtering client-side rather than resuming at the correct page — which produces redundant API calls on restart. The vestigial `comments_fetched` field suggests the nested-loop problem was considered but not resolved. On widgets (24/40), the `WidgetConfig` registry is well-structured but `WidgetInstance.id` carries the widget type ID rather than a unique instance key, making it impossible to place two of the same widget type. Both READMEs were left unchanged.
 - The previously reported "Qwen 3.6-27B-8bit" entry was likely a 4-bit OpenRouter quantization; see the `qwen3.6-27B-4bit-openrouter/` directory.
 
 Across all eleven models, explicit ambiguity-resolution remains the hardest benchmark bar; most implementations still pick a path and code it without clearly naming tradeoffs.

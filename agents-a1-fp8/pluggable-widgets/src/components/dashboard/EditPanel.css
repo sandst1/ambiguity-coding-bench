@@ -1,0 +1,138 @@
+.edit-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.edit-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.edit-panel-header h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.edit-section {
+  margin-bottom: 24px;
+}
+
+.edit-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.widget-selector {
+  display: flex;
+  gap: 12px;
+}
+
+.widget-selector select {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--panel);
+}
+
+.empty-text {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.widget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.widget-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  gap: 16px;
+}
+
+.widget-list-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.widget-list-info strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.widget-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+}
+
+.widget-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.widget-list-actions .btn-icon {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.widget-list-actions .btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.widget-list-actions .btn-icon:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.width-select {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--panel);
+  min-width: 80px;
+}
+
+.btn-danger {
+  background: var(--bad) !important;
+  color: white !important;
+  border: none !important;
+  padding: 6px 10px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  font-size: 12px !important;
+}
+
+.btn-danger:hover {
+  opacity: 0.9 !important;
+}
+
+/* Button styles (reusing existing classes) */
+/* Edit panel specific styles, base buttons in styles.css */
